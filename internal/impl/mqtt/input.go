@@ -45,6 +45,8 @@ This input adds the following metadata fields to each message:
 - mqtt_retained
 - mqtt_topic
 - mqtt_message_id
+- mqtt_content_type (if set, MQTT v5 only)
+- All message user properties (MQTT v5 only)
 
 You can access these metadata fields using xref:configuration:interpolation.adoc#bloblang-queries[function interpolation].`).
 		Fields(clientFields()...).
@@ -223,6 +225,16 @@ func (m *mqttReader) Read(ctx context.Context) (*service.Message, service.AckFun
 		message.MetaSetMut("mqtt_retained", msg.Packet.Retain)
 		message.MetaSetMut("mqtt_topic", msg.Packet.Topic)
 		message.MetaSetMut("mqtt_message_id", int(msg.Packet.PacketID))
+
+		props := msg.Packet.Properties
+		if props != nil {
+			if len(props.ContentType) > 0 {
+				message.MetaSetMut("mqtt_content_type", props.ContentType)
+			}
+			for _, up := range props.User {
+				message.MetaSetMut(up.Key, up.Value)
+			}
+		}
 
 		return message, func(_ context.Context, res error) error {
 			if res == nil {
