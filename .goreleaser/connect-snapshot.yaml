@@ -1,0 +1,56 @@
+---
+project_name: redpanda-connect
+dist: target/dist
+version: 2
+
+builds:
+  - id: connect
+    main: cmd/redpanda-connect/main.go
+    binary: redpanda-connect
+    goos: [ linux ]
+    goarch: [ amd64 ]
+    # goarm: [ 6, 7 ]
+    hooks:
+      post:
+        # The binary is signed and notarized when running a production release, but for snapshot builds notarization is
+        # skipped and only ad-hoc signing is performed (not cryptographic material is needed).
+        #
+        # note: environment variables required for signing and notarization (set in CI) but are not needed for snapshot builds
+        #    QUILL_SIGN_P12, QUILL_SIGN_PASSWORD, QUILL_NOTARY_KEY, QUILL_NOTARY_KEY_ID, QUILL_NOTARY_ISSUER
+        - cmd: ./resources/scripts/sign_for_darwin.sh "{{ .Os }}" "{{ .Path }}" "{{ .IsSnapshot }}"
+          env:
+            - QUILL_LOG_FILE=target/dist/quill-{{ .Target }}.log
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - timetzdata
+    ldflags: >
+      -s -w
+      -X main.Version={{.Version}}
+      -X main.DateBuilt={{.Date}}
+      -X main.BinaryName=redpanda-connect
+      -X github.com/redpanda-data/connect/v4/internal/telemetry.ExportHost={{ if index .Env "CONNECT_TELEMETRY_HOST"  }}{{ .Env.CONNECT_TELEMETRY_HOST }}{{ else }}{{ end }}
+      -X github.com/redpanda-data/connect/v4/internal/telemetry.ExportDelay={{ if index .Env "CONNECT_TELEMETRY_DELAY"  }}{{ .Env.CONNECT_TELEMETRY_DELAY }}{{ else }}{{ end }}
+      -X github.com/redpanda-data/connect/v4/internal/telemetry.ExportPeriod={{ if index .Env "CONNECT_TELEMETRY_PERIOD"  }}{{ .Env.CONNECT_TELEMETRY_PERIOD }}{{ else }}{{ end }}
+
+archives:
+  - formats: [ 'binary' ]
+
+dockers_v2:
+  - id: connect
+    dockerfile: resources/docker/Dockerfile
+    ids:
+      - connect
+    images:
+      - redpandadata/connect
+      - 490532354953.dkr.ecr.eu-central-1.amazonaws.com/redpandadata/connect
+    tags:
+      - "{{ if not .IsSnapshot }}{{ .Version }}{{ end }}"
+      - "{{ if and (not .IsSnapshot) (eq .Prerelease ``) }}{{ .Major }}.{{.Minor}}{{ end }}"
+      - "{{ if and (not .IsSnapshot) (eq .Prerelease ``) }}{{ .Major }}{{ end }}"
+      - "{{ if and (not .IsSnapshot) (eq .Prerelease ``) }}latest-cloud{{ end }}"
+      - "{{ if or .IsSnapshot (ne .Prerelease ``) }}v{{.Version}}{{ end }}"
+    platforms:
+      - linux/amd64
+    extra_files:
+      - config/docker.yaml

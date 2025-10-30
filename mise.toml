@@ -1,0 +1,33 @@
+[tools]
+awscli = "2"
+go = "1.25.2"
+goreleaser = "2.12.7"
+
+[vars]
+ecr_repository = '490532354953.dkr.ecr.eu-central-1.amazonaws.com/redpandadata/connect'
+
+[tasks.snapshot]
+description = "Build a snapshot release"
+run = '''
+#!/usr/bin/env bash
+goreleaser release --config .goreleaser/connect-snapshot.yaml --snapshot --clean
+'''
+
+[tasks.push-ecr]
+description = "Push docker image to AWS ECR"
+usage = '''
+arg "<tag>" help="Docker tag of image redpandadata/connect to push"
+complete "tag" run="mise run list-image-tags"
+'''
+run = '''
+#!/usr/bin/env bash
+aws sts get-caller-identity > /dev/null || aws sso login
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin {{vars.ecr_repository}}
+docker push "{{vars.ecr_repository}}:${usage_tag:?}"
+'''
+env.AWS_PROFILE = "christian-admin"
+
+[tasks.list-image-tags]
+hide = true
+silent = true
+run = "docker images {{vars.ecr_repository}} --format '{% raw %}{{.Tag}}{% endraw %}'"
